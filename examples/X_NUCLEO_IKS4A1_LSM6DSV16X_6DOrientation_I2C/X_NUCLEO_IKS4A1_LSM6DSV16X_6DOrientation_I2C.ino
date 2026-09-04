@@ -1,6 +1,6 @@
 /**
  ******************************************************************************
- * @file   X_NUCLEO_IKS4A1_LSM6DSV16X_6DOrientation.ino
+ * @file   X_NUCLEO_IKS4A1_LSM6DSV16X_6DOrientation_I2C.ino
  * @author  AST
  * @version V1.0.0
  * @date    October 2023

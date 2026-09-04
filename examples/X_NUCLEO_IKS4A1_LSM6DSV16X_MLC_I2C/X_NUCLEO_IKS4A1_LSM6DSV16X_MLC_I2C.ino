@@ -1,10 +1,10 @@
 /**
  ******************************************************************************
- * @file   X_NUCLEO_IKS4A1_LSM6DSV16X_SingleTap.ino
+ * @file    X_NUCLEO_IKS4A1_LSM6DSV16X_MLC_I2C.ino
  * @author  SRA
  * @version V1.0.0
  * @date    October 2023
- * @brief   Arduino test application for the STMicrolectronics
+ * @brief   Arduino test application for the STMicrolectronics X-NUCLEO-IKS4A1
  *          MEMS Inertial and Environmental sensor expansion board.
  *          This application makes use of C++ classes obtained from the C
  *          components' drivers.
@@ -37,10 +37,11 @@
  *
  ******************************************************************************
  */
-//NOTE: this example isn't compatible with Arduino Uno
+//NOTE: This example isn't compatible with Arduino Uno.
 
-
-#include <LSM6DSV16XSensor.h>
+// Includes
+#include "LSM6DSV16XSensor.h"
+#include "lsm6dsv16x_activity_recognition_for_mobile.h"
 
 #ifdef ARDUINO_SAM_DUE
 #define DEV_I2C Wire1
@@ -55,52 +56,106 @@
 
 #define INT_1 5
 
-LSM6DSV16XSensor accGyr(&DEV_I2C);
-
 //Interrupts.
 volatile int mems_event = 0;
 
-char report[256];
+// Components
+LSM6DSV16XSensor AccGyr(&DEV_I2C);
+
+// MLC
+ucf_line_t *ProgramPointer;
+int32_t LineCounter;
+int32_t TotalNumberOfLine;
 
 void INT1Event_cb();
+void printMLCStatus(uint8_t status);
 
 void setup() {
+  lsm6dsv16x_mlc_out_t  mlc_out;
   // Led.
   pinMode(LED_BUILTIN, OUTPUT);
+
   // Initialize serial for output.
   SerialPort.begin(115200);
-
+  
   // Initialize I2C bus.
   DEV_I2C.begin();
-  
+
+  AccGyr.begin();
+  AccGyr.Enable_X();
+  AccGyr.Enable_G();
+
+  /* Feed the program to Machine Learning Core */
+  /* Activity Recognition Default program */  
+  ProgramPointer = (ucf_line_t *)lsm6dsv16x_activity_recognition_for_mobile;
+  TotalNumberOfLine = sizeof(lsm6dsv16x_activity_recognition_for_mobile) / sizeof(ucf_line_t);
+  SerialPort.println("Activity Recognition for LSM6DSV16X MLC");
+  SerialPort.print("UCF Number Line=");
+  SerialPort.println(TotalNumberOfLine);
+
+  for (LineCounter=0; LineCounter<TotalNumberOfLine; LineCounter++) {
+    if(AccGyr.Write_Reg(ProgramPointer[LineCounter].address, ProgramPointer[LineCounter].data)) {
+      SerialPort.print("Error loading the Program to LSM6DSV16X at line: ");
+      SerialPort.println(LineCounter);
+      while(1) {
+        // Led blinking.
+        digitalWrite(LED_BUILTIN, HIGH);
+        delay(250);
+        digitalWrite(LED_BUILTIN, LOW);
+        delay(250);
+      }
+    }
+  }
+
+  SerialPort.println("Program loaded inside the LSM6DSV16X MLC");
+
   //Interrupts.
+  pinMode(INT_1, INPUT);
   attachInterrupt(INT_1, INT1Event_cb, RISING);
 
-  accGyr.begin();
-  accGyr.Enable_X();
-  accGyr.Enable_Single_Tap_Detection(LSM6DSV16X_INT1_PIN);
+  /* We need to wait for a time window before having the first MLC status */
+  delay(3000);
+
+  AccGyr.Get_MLC_Output(&mlc_out);
+  printMLCStatus(mlc_out.mlc1_src);
 }
 
 void loop() {
-  if (mems_event)
-  {
+  if (mems_event) {
     mems_event=0;
-    LSM6DSV16X_Event_Status_t status;
-    accGyr.Get_X_Event_Status(&status);
-    if (status.TapStatus)
-    {
-      // Output data.
-      SerialPort.println("Single Tap Detected!");
-
-      // Led blinking.
-      digitalWrite(LED_BUILTIN, HIGH);
-      delay(100);
-      digitalWrite(LED_BUILTIN, LOW);
+    lsm6dsv16x_mlc_status_mainpage_t status;
+    AccGyr.Get_MLC_Status(&status);
+    if (status.is_mlc1) {
+      lsm6dsv16x_mlc_out_t mlc_out;
+      AccGyr.Get_MLC_Output(&mlc_out);
+      printMLCStatus(mlc_out.mlc1_src);
     }
   }
 }
 
-void INT1Event_cb()
-{
+void INT1Event_cb() {
   mems_event = 1;
+}
+
+void printMLCStatus(uint8_t status) {
+  switch(status) {
+    case 0:
+      SerialPort.println("Activity: Stationary");
+      break;
+    case 1:
+      SerialPort.println("Activity: Walking");
+      break;
+    case 4:
+      SerialPort.println("Activity: Jogging");
+      break;
+    case 8:
+      SerialPort.println("Activity: Biking");
+      break;
+    case 12:
+      SerialPort.println("Activity: Driving");
+      break;
+    default:
+      SerialPort.println("Activity: Unknown");
+      break;
+  }	  
 }

@@ -1,6 +1,6 @@
 /**
  ******************************************************************************
- * @file    X_NUCLEO_IKS4A1_HelloWorld.ino
+ * @file    X_NUCLEO_IKS4A1_HelloWorld_I2C.ino
  * @author  SRA
  * @version V1.0.0
  * @date    October 2023

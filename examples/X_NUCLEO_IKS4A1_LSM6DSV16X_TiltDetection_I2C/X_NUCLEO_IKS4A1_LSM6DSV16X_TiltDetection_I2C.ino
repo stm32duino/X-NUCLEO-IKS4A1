@@ -1,6 +1,6 @@
 /**
  ******************************************************************************
- * @file    X_NUCLEO_IKS4A1_LSM6DSV16X_Qvar_Polling.ino
+ * @file   X_NUCLEO_IKS4A1_LSM6DSV16X_TiltDetection_I2C.ino
  * @author  SRA
  * @version V1.0.0
  * @date    October 2023
@@ -37,6 +37,8 @@
  *
  ******************************************************************************
  */
+//NOTE: this example isn't compatible with Arduino Uno
+
 
 #include <LSM6DSV16XSensor.h>
 
@@ -51,47 +53,54 @@
 #endif
 #define SerialPort Serial
 
+#define INT_1 5
+
 LSM6DSV16XSensor accGyr(&DEV_I2C);
+
+//Interrupts.
+volatile int mems_event = 0;
+
+char report[256];
+
+void INT1Event_cb();
 
 void setup() {
   // Led.
   pinMode(LED_BUILTIN, OUTPUT);
-
   // Initialize serial for output.
   SerialPort.begin(115200);
 
   // Initialize I2C bus.
   DEV_I2C.begin();
   
-  // Initialize LSM6DSV16X.
+  //Interrupts.
+  attachInterrupt(INT_1, INT1Event_cb, RISING);
+
   accGyr.begin();
-
-  // Enable accelerometer and gyroscope.
   accGyr.Enable_X();
-  accGyr.Enable_G();
-
-  // Enable QVAR
-  if (accGyr.QVAR_Enable() != 0) {
-    SerialPort.println("Error during initialization of QVAR");
-    while (1) {
-      // Led blinking.
-      digitalWrite(LED_BUILTIN, HIGH);
-      delay(250);
-      digitalWrite(LED_BUILTIN, LOW);
-      delay(250);
-    }
-  }
-  SerialPort.println("LSM6DSV16X QVAR Demo");
+  accGyr.Enable_Tilt_Detection(LSM6DSV16X_INT1_PIN);
 }
 
 void loop() {
-  uint8_t qvar_status;
-  float qvar_data;
-  // Check if QVAR data is ready
-  accGyr.QVAR_GetStatus(&qvar_status);
-  if (qvar_status) {
-    // Get QVAR data
-    accGyr.QVAR_GetData(&qvar_data);
-    SerialPort.println(qvar_data);
+  if (mems_event)
+  {
+    mems_event=0;
+    LSM6DSV16X_Event_Status_t status;
+    accGyr.Get_X_Event_Status(&status);
+    if (status.TiltStatus)
+    {
+      // Led blinking.
+      digitalWrite(LED_BUILTIN, HIGH);
+      delay(100);
+      digitalWrite(LED_BUILTIN, LOW);
+      
+      // Output data.
+      SerialPort.println("Tilt Detected!");
+    }
   }
+}
+
+void INT1Event_cb()
+{
+  mems_event = 1;
 }

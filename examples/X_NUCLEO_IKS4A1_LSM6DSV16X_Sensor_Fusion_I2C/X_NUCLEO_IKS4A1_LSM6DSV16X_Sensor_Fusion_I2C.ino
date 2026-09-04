@@ -1,6 +1,6 @@
 /**
  ******************************************************************************
- * @file   X_NUCLEO_IKS4A1_LSM6DSV16X_FreeFallDetection.ino
+ * @file   X_NUCLEO_IKS4A1_LSM6DSV16X_Sensor_Fusion_I2C.ino
  * @author  SRA
  * @version V1.0.0
  * @date    October 2023
@@ -37,9 +37,13 @@
  *
  ******************************************************************************
  */
-//NOTE: this example isn't compatible with Arduino Uno
 
+/*
+ * You can display the quaternion values with a 3D model connecting for example to this link:
+ * https://adafruit.github.io/Adafruit_WebSerial_3DModelViewer/
+ */
 
+// Includes.
 #include <LSM6DSV16XSensor.h>
 
 #ifdef ARDUINO_SAM_DUE
@@ -53,14 +57,15 @@
 #endif
 #define SerialPort Serial
 
-#define INT_1 5
+#define ALGO_FREQ  120U /* Algorithm frequency 120Hz */
+#define ALGO_PERIOD  (1000U / ALGO_FREQ) /* Algorithm period [ms] */
+unsigned long startTime, elapsedTime;
+uint8_t status = 0;
+uint32_t k = 0;
+uint8_t tag = 0;
+float quaternions[4] = {0};
 
 LSM6DSV16XSensor accGyr(&DEV_I2C);
-
-//Interrupts.
-volatile int mems_event = 0;
-
-void INT1Event_cb();
 
 void setup() {
   // Led.
@@ -70,34 +75,70 @@ void setup() {
 
   // Initialize I2C bus.
   DEV_I2C.begin();
-  
-  //Interrupts.
-  attachInterrupt(INT_1, INT1Event_cb, RISING);
 
+  // Initialize LSM6DSV16X.
   accGyr.begin();
   accGyr.Enable_X();
-  accGyr.Enable_Free_Fall_Detection(LSM6DSV16X_INT1_PIN);
-}
+  accGyr.Enable_G();
 
-void loop() {
-  if (mems_event)
-  {
-    mems_event=0;
-    LSM6DSV16X_Event_Status_t status;
-    accGyr.Get_X_Event_Status(&status);
-    if (status.FreeFallStatus)
-    {
+  // Enable Sensor Fusion
+  status |= accGyr.Set_X_FS(4);
+  status |= accGyr.Set_G_FS(2000);
+  status |= accGyr.Set_X_ODR(120.0f);
+  status |= accGyr.Set_G_ODR(120.0f);
+  status |= accGyr.Set_SFLP_ODR(120.0f);
+  status |= accGyr.Enable_Rotation_Vector();
+  status |= accGyr.FIFO_Set_Mode(LSM6DSV16X_STREAM_MODE);
+
+  if (status != LSM6DSV16X_OK) {
+    SerialPort.println("LSM6DSV16X Sensor failed to init/configure");
+    while (1) {
       // Led blinking.
       digitalWrite(LED_BUILTIN, HIGH);
-      delay(200);
+      delay(250);
       digitalWrite(LED_BUILTIN, LOW);
-      // Output data.
-      SerialPort.println("Free Fall Detected!");  
+      delay(250);
     }
   }
+  SerialPort.println("LSM6DSV16X SFLP Demo");
 }
 
-void INT1Event_cb()
+void loop()
 {
-  mems_event = 1;
+  uint16_t fifo_samples;
+  // Get start time of loop cycle
+  startTime = millis();
+
+  // Check the number of samples inside FIFO
+  if (accGyr.FIFO_Get_Num_Samples(&fifo_samples) != LSM6DSV16X_OK) {
+    SerialPort.println("LSM6DSV16X Sensor failed to get number of samples inside FIFO");
+    while (1);
+  }
+
+  // Read the FIFO if there is one stored sample
+  if (fifo_samples > 0) {
+    for (int i = 0; i < fifo_samples; i++) {
+      accGyr.FIFO_Get_Tag(&tag);
+      if (tag == 0x13) {
+        accGyr.FIFO_Get_Rotation_Vector(&quaternions[0]);
+
+        // Print Quaternion data
+        SerialPort.print("Quaternion: ");
+        SerialPort.print(quaternions[3], 4);
+        SerialPort.print(", ");
+        SerialPort.print(quaternions[0], 4);
+        SerialPort.print(", ");
+        SerialPort.print(quaternions[1], 4);
+        SerialPort.print(", ");
+        SerialPort.println(quaternions[2], 4);
+
+        // Compute the elapsed time within loop cycle and wait
+        elapsedTime = millis() - startTime;
+
+        if ((long)(ALGO_PERIOD - elapsedTime) > 0) {
+          delay(ALGO_PERIOD - elapsedTime);
+        }
+      }
+    }
+  }
 }

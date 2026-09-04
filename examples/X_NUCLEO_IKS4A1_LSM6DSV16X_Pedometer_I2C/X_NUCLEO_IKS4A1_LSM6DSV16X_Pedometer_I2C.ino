@@ -1,6 +1,6 @@
 /**
  ******************************************************************************
- * @file   X_NUCLEO_IKS4A1_LSM6DSV16X_Pedometer.ino
+ * @file   X_NUCLEO_IKS4A1_LSM6DSV16X_Pedometer_I2C.ino
  * @author  SRA
  * @version V1.0.0
  * @date    October 2023
